@@ -1,0 +1,15 @@
+# All firmware/FAP build outputs (dbt.py)
+build/
+.cache/
+.idea/
+__pycache__/
+sdkconfig.old
+.DS_Store
+.vscode/settings.json
+
+# Local-dev tooling (not for upstream)
+_flash_helper.py
+
+# Managed components are pulled by IDF component manager from idf_component.yml
+# + dependencies.lock; the source-of-truth is those two files.
+managed_components/

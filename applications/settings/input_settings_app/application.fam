@@ -1,0 +1,9 @@
+App(
+    appid="input_settings",
+    name="Input",
+    apptype=FlipperAppType.EXTSETTINGS,
+    entry_point="input_settings_app",
+    requires=["gui", "input"],
+    stack_size=2 * 1024,
+    order=60,
+)

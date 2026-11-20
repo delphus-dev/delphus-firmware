@@ -18,6 +18,7 @@
 #include "helpers/mesh_config.h"
 #include "helpers/mesh_service.h"
 #include "helpers/mesh_capture.h"
+#include "helpers/qflipper_bridge.h"
 
 #include "furi_hal_power.h"
 
@@ -682,6 +683,13 @@ int32_t desktop_srv(void* p) {
     Desktop* desktop = desktop_alloc();
 
     desktop_init_settings(desktop);
+
+    /* qFlipper mode is enabled at boot for now (will be made optional later).
+     * NOTE: installing the composite switches the USB PHY to OTG, so the
+     * USB-Serial/JTAG bridge used by esptool is gone until the next reboot. */
+    if(!qflipper_bridge_start()) {
+        FURI_LOG_W(TAG, "qFlipper bridge failed to start");
+    }
 
     /* Mesh: der T-Embed ist immer Master; der Master-Service läuft on-demand in
      * der Mesh-Clients-Scene — beim Boot ist nichts zu starten. */

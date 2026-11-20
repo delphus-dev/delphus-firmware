@@ -16,7 +16,7 @@ Only one board is supported: **Delphus** — ESP32-S3 with a ST7567 128×64 mono
 |---|---|---|---|---|---|
 | ESP32-S3 (Xtensa LX7) | ST7567 128×64 mono SPI | 6 GPIO buttons | CC1101 (shared SPI) | RMT TX + RX | SPI |
 
-Also on board: 125 kHz RFID (RDM6300 on UART1), one WS2812 RGB LED, vibro and a PWM buzzer (IO15, LEDC). NFC uses an ST25R3916 (SPI2, CS IO47 / IRQ IO48) — the pinout is defined but its HAL is not ported yet. nRF24 and touch are not present.
+Also on board: 125 kHz RFID (RDM6300 on UART1), one WS2812 RGB LED, vibro and a PWM buzzer (IO15, LEDC). NFC uses an ST25R3916 (SPI2, CS IO47 / IRQ IO48) with ST RFAL. IO47/IO48 are shared with the RFID module: the first API actually in use (NFC acquire or RFID read) owns the pins. nRF24 and touch are not present.
 
 ## How to Flash
 

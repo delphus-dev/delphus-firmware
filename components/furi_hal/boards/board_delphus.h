@@ -145,7 +145,7 @@
 #define BOARD_HAS_SPEAKER       1
 #define BOARD_HAS_IR            1
 #define BOARD_HAS_IBUTTON       1
-#define BOARD_HAS_NFC           0   /* ST25R3916 HAL is a separate task */
+#define BOARD_HAS_NFC           1   /* ST25R3916 on SPI2; shares IO47/IO48 with RFID */
 #define BOARD_HAS_SUBGHZ        1
 #define BOARD_HAS_MIC           0
 

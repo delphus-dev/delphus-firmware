@@ -29,7 +29,8 @@ set(FURI_HAL_SRCS
     "furi_hal_spi_bus.c"
     "furi_hal_spi.c"
     "furi_hal_subghz.c"
-    "furi_hal_nfc.c"
+    "furi_hal_nfc.cpp"
+    "furi_hal_pin_arbiter.c"
     "furi_hal_random.c"
     "furi_hal_sd.c"
     "furi_hal_infrared.c"
@@ -57,9 +58,13 @@ else()
     list(APPEND FURI_HAL_SRCS "furi_hal_usb_hid_stub.c")
 endif()
 
+# ST25R3916 + ST RFAL (Arduino-flavoured C++ sources with our compat layer).
+file(GLOB RFAL_SRCS "nfc_rfal/*.cpp" "nfc_rfal/*.c")
+list(APPEND FURI_HAL_SRCS ${RFAL_SRCS} "nfc_compat/nfc_platform.cpp")
+
 idf_component_register(
     SRCS ${FURI_HAL_SRCS}
-    INCLUDE_DIRS "." ".." "../.." "boards"
+    INCLUDE_DIRS "." ".." "../.." "boards" "nfc_rfal" "nfc_compat/include"
     REQUIRES ${FURI_HAL_REQUIRES}
 )
 
@@ -71,4 +76,6 @@ target_compile_definitions(${COMPONENT_LIB} PUBLIC
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=implicit-function-declaration
     -Wno-error=builtin-declaration-mismatch
+    -Wno-error=deprecated-declarations
+    -Wno-error=unused-variable
 )

@@ -14,6 +14,7 @@
  */
 
 #include "furi_hal_rfid.h"
+#include "furi_hal_pin_arbiter.h"
 #include <furi.h>
 #include <esp_log.h>
 
@@ -252,6 +253,16 @@ static void rfid_pull_set(bool active) {
 #endif
 
 void furi_hal_rfid_init(void) {
+    /* IO47/IO48 are shared with NFC. Pins are claimed/configured only when a
+     * read is actually started (see furi_hal_rfid_tim_read_capture_start). */
+    FURI_LOG_I(TAG, "RFID HAL ready (RDM6300 UART bridge, pins on demand)");
+}
+
+static bool rfid_pins_claim(void) {
+    if(!furi_hal_shared_pins_claim(FuriHalSharedPinRfid)) {
+        ESP_LOGW(TAG, "Shared pins are owned by NFC");
+        return false;
+    }
 #ifdef BOARD_PIN_RFID_PULL
     if(BOARD_PIN_RFID_PULL != UINT16_MAX) {
         gpio_config_t cfg = {
@@ -265,7 +276,7 @@ void furi_hal_rfid_init(void) {
         rfid_pull_set(false);
     }
 #endif
-    FURI_LOG_I(TAG, "RFID HAL initialized (RDM6300 UART bridge)");
+    return true;
 }
 
 void furi_hal_rfid_pins_reset(void) {
@@ -299,6 +310,7 @@ void furi_hal_rfid_tim_read_capture_start(
     FuriHalRfidReadCaptureCallback callback,
     void* context) {
     if(s_reading) return;
+    if(!rfid_pins_claim()) return;
 
     s_capture_cb = callback;
     s_capture_ctx = context;
@@ -322,6 +334,7 @@ void furi_hal_rfid_tim_read_capture_stop(void) {
     }
     s_capture_cb = NULL;
     s_capture_ctx = NULL;
+    furi_hal_shared_pins_release(FuriHalSharedPinRfid);
 }
 
 void furi_hal_rfid_tim_emulate_dma_start(

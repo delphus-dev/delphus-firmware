@@ -99,6 +99,7 @@ struct Desktop {
     FuriPubSubSubscription* input_events_subscription;
 
     FuriTimer* auto_lock_timer;
+    FuriTimer* qflipper_usj_timer;
     FuriTimer* update_clock_timer;
 
     AnimationManager* animation_manager;
@@ -148,3 +149,7 @@ void desktop_set_stealth_mode_state(Desktop* desktop, bool enabled);
  * view_dispatcher_send_custom_event. Aus dem Mesh-Service-Worker-Task sicher
  * aufrufbar (view_dispatcher hat eigene message queue). */
 void desktop_mesh_event_cb(const MeshEventData* ev, void* ctx);
+
+/* Re-read lock-menu states (qFlipper/BT labels) — also callable from outside
+ * the scene (qFlipper bridge auto-off). */
+void desktop_scene_lock_menu_refresh(Desktop* desktop);

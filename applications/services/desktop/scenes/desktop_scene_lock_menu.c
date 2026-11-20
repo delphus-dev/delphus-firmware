@@ -6,6 +6,7 @@
 #include "../desktop_i.h"
 #include "../views/desktop_view_lock_menu.h"
 #include "../helpers/qflipper_bridge.h"
+#include "furi_hal_usb_tinyusb_composite.h"
 #include "desktop_scene.h"
 
 #include "sdkconfig.h"
@@ -41,7 +42,7 @@ static void desktop_lock_menu_set_bt_enabled(bool enabled) {
 
 /* Rebuild the menu from the live toggle states (used on enter and after a
  * toggle, so the Enable/Disable labels track reality). */
-static void desktop_scene_lock_menu_refresh(Desktop* desktop) {
+void desktop_scene_lock_menu_refresh(Desktop* desktop) {
     desktop_lock_menu_set_states(
         desktop->lock_menu,
         LOCK_MENU_USB_AVAILABLE,
@@ -67,6 +68,10 @@ bool desktop_scene_lock_menu_on_event(void* context, SceneManagerEvent event) {
         case DesktopLockMenuEventQflipperToggle:
             if(qflipper_bridge_is_active()) {
                 qflipper_bridge_stop();
+                /* Bridge detached — now fully tear the shared composite down so
+                 * the internal USB PHY routes back to USB-Serial-JTAG. esptool
+                 * can flash again immediately, no reboot / BOOT+RESET needed. */
+                furi_hal_usb_composite_uninstall();
             } else {
                 qflipper_bridge_start();
             }

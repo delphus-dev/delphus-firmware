@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,11 +32,22 @@ bool furi_hal_usb_composite_is_installed(void);
  * USB-Serial-JTAG controller, restoring the flash/console port without a
  * reboot. ESP32-S3/S2 only; returns false on boards without USB-OTG.
  *
- * NOTE: experimental. esp_tinyusb's tusb_teardown() is a no-op in this build,
- * so re-installing the Composite afterwards (without a reboot) is not
- * guaranteed to work. Intended for "leave qFlipper mode -> flash" flows.
+ * Full symmetric teardown: deinits TinyUSB, frees the CDC-ACM wrapper (so a
+ * later install re-initialises CDC cleanly), deletes the OTG PHY and routes the
+ * shared PHY back to USJ. Re-install afterwards works without a reboot.
  */
 bool furi_hal_usb_composite_uninstall(void);
+
+/** Route the shared internal USB FSLS PHY back to USB-Serial-JTAG without
+ *  touching a possibly-installed TinyUSB stack. The mux is in the RTC always-on
+ *  domain and survives a soft reset, so this must be called at boot to recover
+ *  the flash/console port after a composite was active on a previous boot. */
+void furi_hal_usb_composite_restore_serial_jtag(void);
+
+/** Raw USB-Serial-JTAG console access (only while the composite is NOT
+ *  installed). Returns number of bytes read/written, 0 otherwise. */
+size_t furi_hal_usb_serial_jtag_read(uint8_t* buf, size_t len);
+size_t furi_hal_usb_serial_jtag_write(const uint8_t* buf, size_t len);
 
 #ifdef __cplusplus
 }

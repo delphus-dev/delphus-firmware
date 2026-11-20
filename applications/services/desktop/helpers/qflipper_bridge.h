@@ -23,13 +23,23 @@ extern "C" {
 bool qflipper_bridge_start(void);
 
 /** Stop the bridge thread and close the RPC session, but LEAVE the composite
- *  installed (like USB-Storage) — this esp_tinyusb build can't cleanly
- *  reinstall after an uninstall, so re-enabling just reattaches. The composite
- *  stays up until the next reboot. */
+ *  installed (like USB-Storage). The user-facing "Disable qFlipper" path calls
+ *  furi_hal_usb_composite_uninstall() right after to route the PHY back to USJ;
+ *  the uninstall is a clean symmetric teardown, so re-enabling works. */
 void qflipper_bridge_stop(void);
 
 /** True while the bridge thread is running. */
 bool qflipper_bridge_is_active(void);
+
+/** Auto-off: once a host had the CDC port open (DTR up) and then dropped it for
+ *  QFLIPPER_BRIDGE_AUTO_OFF_MS without coming back (qT-Embed closed, cable
+ *  pulled), the bridge calls this callback from its own thread. The receiver
+ *  (desktop) must then stop the bridge + uninstall the composite on ITS thread
+ *  (qflipper_bridge_stop joins the bridge thread, so it can't run here). Short
+ *  session restarts of qT-Embed (100-300 ms) stay well below the grace period. */
+#define QFLIPPER_BRIDGE_AUTO_OFF_MS 3000
+typedef void (*QflipperBridgeAutoOffCallback)(void* context);
+void qflipper_bridge_set_auto_off_callback(QflipperBridgeAutoOffCallback callback, void* context);
 
 #ifdef __cplusplus
 }

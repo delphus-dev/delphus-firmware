@@ -8,10 +8,21 @@
  *
  * Installing the TinyUSB composite switches the ESP32-S3 internal USB PHY from
  * USB-Serial-JTAG to USB-OTG, which kills the serial/JTAG bridge esptool uses
- * for flashing. So we only do it on demand. stop() leaves the composite
- * installed (like USB-Storage) and only detaches the RPC bridge — this
- * esp_tinyusb build can't cleanly reinstall after an uninstall, so the
- * composite stays up until reboot.
+ * for flashing. So we only do it on demand.
+ *
+ * stop() here only detaches the RPC bridge (CDC callbacks off, session closed)
+ * and deliberately LEAVES the composite installed — it is also the mutual-
+ * exclusion hook the USB-Storage scene calls before taking the composite over
+ * for MSC. The *user-facing* "Disable qFlipper" path (lock menu) calls stop()
+ * AND then furi_hal_usb_composite_uninstall(), which fully tears the composite
+ * down and routes the PHY back to USB-Serial-JTAG — so JTAG returns live, no
+ * reboot. That uninstall is now a clean, symmetric teardown (frees the
+ * esp_tinyusb CDC-ACM wrapper), so re-enabling qFlipper reinstalls cleanly.
+ *
+ * The PHY mux also lives in the RTC always-on domain and survives a soft reset,
+ * so as a safety net furi_hal_usb_init() forces the mux back to USJ at every
+ * boot — even a crash/watchdog reboot with the composite still up recovers the
+ * flash/console port without a BOOT+RESET.
  */
 
 #include "qflipper_bridge.h"
@@ -62,6 +73,7 @@ typedef struct {
     bool connected;       /* DTR state */
     bool session_open;    /* RPC session active */
     bool rpc_mode;        /* false = CLI handshake, true = piping protobuf */
+    bool auto_off_armed;  /* host was connected and dropped DTR — grace period running */
     volatile bool exiting; /* stop() requested — bail out of any blocking loop */
 
     /* CLI handshake line buffer (qFlipper sends "start_rpc_session\r") */
@@ -74,6 +86,8 @@ typedef struct {
 
 /* Single-instance background bridge. */
 static UsbRpcSrv* s_bridge = NULL;
+static QflipperBridgeAutoOffCallback s_auto_off_cb = NULL;
+static void* s_auto_off_ctx = NULL;
 
 #if QFLIPPER_HAVE_COMPOSITE
 
@@ -253,7 +267,23 @@ static void qflipper_cli_rx(UsbRpcSrv* srv) {
 static void qflipper_bridge_run(UsbRpcSrv* srv) {
     UsbRpcEvent ev;
     while(true) {
-        if(furi_message_queue_get(srv->event_q, &ev, FuriWaitForever) != FuriStatusOk) {
+        /* While the host is gone after a session, wait with a timeout: if nothing
+         * happens within the grace period, ask the desktop to leave qFlipper mode. */
+        uint32_t wait = srv->auto_off_armed ? furi_ms_to_ticks(QFLIPPER_BRIDGE_AUTO_OFF_MS) :
+                                              FuriWaitForever;
+        FuriStatus st = furi_message_queue_get(srv->event_q, &ev, wait);
+        if(st == FuriStatusErrorTimeout) {
+            if(srv->auto_off_armed && !srv->connected && !srv->exiting) {
+                srv->auto_off_armed = false;
+                FURI_LOG_I(
+                    TAG,
+                    "host gone for %u ms — leaving qFlipper mode",
+                    (unsigned)QFLIPPER_BRIDGE_AUTO_OFF_MS);
+                if(s_auto_off_cb) s_auto_off_cb(s_auto_off_ctx);
+            }
+            continue;
+        }
+        if(st != FuriStatusOk) {
             continue;
         }
 
@@ -262,6 +292,7 @@ static void qflipper_bridge_run(UsbRpcSrv* srv) {
             return;
 
         case UsbRpcEventConnected:
+            srv->auto_off_armed = false;
             if(srv->connected) break;
             srv->connected = true;
             srv->rpc_mode = false;
@@ -275,6 +306,7 @@ static void qflipper_bridge_run(UsbRpcSrv* srv) {
             srv->connected = false;
             srv->rpc_mode = false;
             srv->cli_len = 0;
+            srv->auto_off_armed = true;
             FURI_LOG_I(TAG, "DTR down — closing RPC session");
             usb_rpc_session_close(srv);
             break;
@@ -321,6 +353,7 @@ bool qflipper_bridge_start(void) {
     srv->connected = false;
     srv->session_open = false;
     srv->rpc_mode = false;
+    srv->auto_off_armed = false;
     srv->exiting = false;
     srv->cli_len = 0;
 
@@ -363,12 +396,11 @@ void qflipper_bridge_stop(void) {
     furi_thread_join(srv->thread);
     furi_thread_free(srv->thread);
 
-    /* Detach the RPC bridge but LEAVE the composite installed — exactly like
-     * USB-Storage, which only toggles its MSC function. The esp_tinyusb build
-     * here can't cleanly reinstall after furi_hal_usb_composite_uninstall()
-     * (tusb_teardown is a no-op), so uninstalling here would break the next
-     * Enable. The composite stays up until reboot; re-enabling just reattaches
-     * the CDC callbacks. */
+    /* Detach the RPC bridge only and LEAVE the composite installed. This is the
+     * shared mutual-exclusion hook (USB-Storage calls it before reusing the
+     * composite for MSC), so tearing the composite down HERE would churn it.
+     * The user-facing "Disable qFlipper" path uninstalls the composite right
+     * after this (see the file header) to route the PHY back to USJ. */
     furi_hal_cdc_set_callbacks(USB_RPC_CDC_ITF, NULL, NULL);
     usb_rpc_session_close(srv);
     furi_record_close(RECORD_RPC);
@@ -380,4 +412,9 @@ void qflipper_bridge_stop(void) {
 
 bool qflipper_bridge_is_active(void) {
     return s_bridge != NULL;
+}
+
+void qflipper_bridge_set_auto_off_callback(QflipperBridgeAutoOffCallback callback, void* context) {
+    s_auto_off_cb = callback;
+    s_auto_off_ctx = context;
 }

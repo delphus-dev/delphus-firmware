@@ -240,22 +240,41 @@ bool furi_hal_usb_composite_uninstall(void) {
          * left the OTG controller idle. */
     }
 
-    /* 2) Re-route the shared internal FSLS PHY from the OTG controller back to
-     *    the USB-Serial-JTAG controller and re-enable its pads. The USJ bus
-     *    clock has been running since boot (it was the console/flash port);
-     *    OTG install never touched it. Re-applying the USJ pull-up makes the
-     *    host re-enumerate the JTAG/serial device, so esptool can flash again.
-     *
-     *    usb_serial_jtag_ll_phy_enable_external(false) sets:
-     *      USB_SERIAL_JTAG.conf0.phy_sel = 0
-     *      RTCCNTL.usb_conf.sw_hw_usb_phy_sel = 1   (software mux control)
-     *      RTCCNTL.usb_conf.sw_usb_phy_sel   = 0   (internal PHY -> USJ) */
-    usb_serial_jtag_ll_phy_enable_external(false);
-    usb_serial_jtag_ll_phy_enable_pad(true);
+    /* 2) Free the esp_tinyusb CDC-ACM wrapper. tinyusb_driver_uninstall() does
+     *    NOT do this, and tusb_cdc_acm_init() refuses a re-init while cdc_obj is
+     *    still allocated — that is what used to break "Enable" after "Disable".
+     *    The TinyUSB task is already stopped, so no callback can touch it now. */
+    esp_err_t cdc_err = tusb_cdc_acm_deinit(TINYUSB_CDC_ACM_0);
+    if(cdc_err != ESP_OK) {
+        FURI_LOG_W(TAG, "tusb_cdc_acm_deinit failed: %d", cdc_err);
+    }
+
+    /* 3) Route the shared PHY back to USB-Serial-JTAG. */
+    furi_hal_usb_composite_restore_serial_jtag();
 
     s_installed = false;
     FURI_LOG_I(TAG, "Composite uninstalled, USB-Serial-JTAG restored");
     return true;
+}
+
+void furi_hal_usb_composite_restore_serial_jtag(void) {
+    /* RTCCNTL.usb_conf bits persist across a soft reset: re-apply on every boot. */
+    usb_serial_jtag_ll_phy_enable_external(false);
+    usb_serial_jtag_ll_phy_enable_pad(true);
+}
+
+size_t furi_hal_usb_serial_jtag_read(uint8_t* buf, size_t len) {
+    if(s_installed || !buf || !len) return 0;
+    if(!usb_serial_jtag_ll_rxfifo_data_available()) return 0;
+    return usb_serial_jtag_ll_read_rxfifo(buf, (uint32_t)len);
+}
+
+size_t furi_hal_usb_serial_jtag_write(const uint8_t* buf, size_t len) {
+    if(s_installed || !buf || !len) return 0;
+    if(!usb_serial_jtag_ll_txfifo_writable()) return 0;
+    size_t n = usb_serial_jtag_ll_write_txfifo(buf, (uint32_t)len);
+    usb_serial_jtag_ll_txfifo_flush();
+    return n;
 }
 
 #else /* !ESP32-S3 / S2 */
@@ -278,6 +297,21 @@ bool furi_hal_usb_composite_is_installed(void) {
 
 bool furi_hal_usb_composite_uninstall(void) {
     return false;
+}
+
+void furi_hal_usb_composite_restore_serial_jtag(void) {
+}
+
+size_t furi_hal_usb_serial_jtag_read(uint8_t* buf, size_t len) {
+    (void)buf;
+    (void)len;
+    return 0;
+}
+
+size_t furi_hal_usb_serial_jtag_write(const uint8_t* buf, size_t len) {
+    (void)buf;
+    (void)len;
+    return 0;
 }
 
 #endif

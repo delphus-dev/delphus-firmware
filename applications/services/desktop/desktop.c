@@ -19,10 +19,14 @@
 #include "helpers/mesh_service.h"
 #include "helpers/mesh_capture.h"
 #include "helpers/qflipper_bridge.h"
+#include "helpers/qflipper_usj_cmd.h"
+#include <furi_hal_usb_tinyusb_composite.h>
 
 #include "furi_hal_power.h"
 
 #define TAG "Desktop"
+/* Poll interval for the "qflipper" command on the USB-Serial-JTAG console. */
+#define QFLIPPER_USJ_POLL_MS 100
 
 /* ─── Mesh helpers (Phase 1) ─────────────────────────────────────────────
  * desktop_mesh_event_cb wird vom Mesh-Service-Worker-Task aufgerufen. Wir
@@ -120,6 +124,7 @@ static void desktop_mesh_on_result(Desktop* desktop) {
 static void desktop_auto_lock_arm(Desktop*);
 static void desktop_auto_lock_inhibit(Desktop*);
 static void desktop_start_auto_lock_timer(Desktop*);
+static void desktop_qflipper_usj_timer_callback(void* context);
 static void desktop_apply_settings(Desktop*);
 
 static void desktop_loader_callback(const void* message, void* context) {
@@ -291,6 +296,32 @@ static bool desktop_custom_event_callback(void* context, uint32_t event) {
         /* Overlay-Timer abgelaufen → auf allen Mesh-Views ausblenden. */
         desktop_mesh_set_overlay_all(desktop, NULL);
 
+    } else if(event == DesktopGlobalQflipperStop) {
+        /* Auto-off of the bridge (host gone): same path as "Disable qFlipper"
+         * in the lock menu — stop the bridge, uninstall the composite so the
+         * PHY routes back to USB-Serial-JTAG. */
+        if(qflipper_bridge_is_active()) {
+            FURI_LOG_I(TAG, "Host disconnected — leaving qFlipper mode");
+            qflipper_bridge_stop();
+            furi_hal_usb_composite_uninstall();
+            desktop_scene_lock_menu_refresh(desktop);
+        }
+
+    } else if(event == DesktopGlobalQflipperStart) {
+        /* Runs on the desktop thread with the system fully up — exactly the
+         * "Enable qFlipper" lock-menu toggle path. Source: the "qflipper"
+         * command from qT-Embed on the USB-Serial-JTAG console. */
+        if(qflipper_bridge_is_active()) {
+            FURI_LOG_D(TAG, "qFlipper bridge already active");
+        } else {
+            FURI_LOG_I(TAG, "Starting qFlipper bridge (host request)");
+            if(!qflipper_bridge_start()) {
+                FURI_LOG_W(TAG, "qFlipper bridge start failed (no USB-OTG on this board?)");
+            }
+            /* If the lock menu is currently open, refresh its label. */
+            desktop_scene_lock_menu_refresh(desktop);
+        }
+
     } else {
         return scene_manager_handle_custom_event(desktop->scene_manager, event);
     }
@@ -324,6 +355,24 @@ static void desktop_auto_lock_timer_callback(void* context) {
     furi_assert(context);
     Desktop* desktop = context;
     view_dispatcher_send_custom_event(desktop->view_dispatcher, DesktopGlobalAutoLock);
+}
+
+/* Called from the bridge thread: only posts an event, the actual stop runs on
+ * the desktop thread (qflipper_bridge_stop joins the bridge thread). */
+static void desktop_qflipper_auto_off_callback(void* context) {
+    furi_assert(context);
+    Desktop* desktop = context;
+    view_dispatcher_send_custom_event(desktop->view_dispatcher, DesktopGlobalQflipperStop);
+}
+
+/* Poll the USJ RX FIFO for the "qflipper" command from qT-Embed every 100 ms
+ * (only while the composite is not installed — the HAL returns 0 otherwise). */
+static void desktop_qflipper_usj_timer_callback(void* context) {
+    furi_assert(context);
+    Desktop* desktop = context;
+    if(qflipper_usj_cmd_poll()) {
+        view_dispatcher_send_custom_event(desktop->view_dispatcher, DesktopGlobalQflipperStart);
+    }
 }
 
 static void desktop_start_auto_lock_timer(Desktop* desktop) {
@@ -544,6 +593,10 @@ static Desktop* desktop_alloc(void) {
     desktop->auto_lock_timer =
         furi_timer_alloc(desktop_auto_lock_timer_callback, FuriTimerTypeOnce, desktop);
 
+    desktop->qflipper_usj_timer =
+        furi_timer_alloc(desktop_qflipper_usj_timer_callback, FuriTimerTypePeriodic, desktop);
+    qflipper_bridge_set_auto_off_callback(desktop_qflipper_auto_off_callback, desktop);
+
     desktop->status_pubsub = furi_pubsub_alloc();
 
     desktop->update_clock_timer =
@@ -684,13 +737,6 @@ int32_t desktop_srv(void* p) {
 
     desktop_init_settings(desktop);
 
-    /* qFlipper mode is enabled at boot for now (will be made optional later).
-     * NOTE: installing the composite switches the USB PHY to OTG, so the
-     * USB-Serial/JTAG bridge used by esptool is gone until the next reboot. */
-    if(!qflipper_bridge_start()) {
-        FURI_LOG_W(TAG, "qFlipper bridge failed to start");
-    }
-
     /* Mesh: der T-Embed ist immer Master; der Master-Service läuft on-demand in
      * der Mesh-Clients-Scene — beim Boot ist nichts zu starten. */
 
@@ -731,6 +777,10 @@ int32_t desktop_srv(void* p) {
     if(desktop->app_running && animation_manager_is_animation_loaded(desktop->animation_manager)) {
         animation_manager_unload_and_stall_animation(desktop->animation_manager);
     }
+
+    /* qT-Embed can request the bridge over the USB-Serial-JTAG console
+     * ("qflipper\n"), see helpers/qflipper_usj_cmd.h. */
+    furi_timer_start(desktop->qflipper_usj_timer, furi_ms_to_ticks(QFLIPPER_USJ_POLL_MS));
 
     view_dispatcher_run(desktop->view_dispatcher);
 

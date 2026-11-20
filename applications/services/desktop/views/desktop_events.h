@@ -90,6 +90,14 @@ typedef enum {
 
     DesktopHwMismatchExit,
 
+    /* Start the qFlipper bridge on the desktop thread (like the lock-menu
+     * toggle), triggered by the "qflipper" command from qT-Embed on the
+     * USB-Serial-JTAG console. */
+    DesktopGlobalQflipperStart,
+    /* Host ended the qFlipper connection (bridge auto-off): stop the bridge
+     * and uninstall the composite -> back to USB-Serial-JTAG. */
+    DesktopGlobalQflipperStop,
+
     DesktopEnclaveExit,
 
     // Global events

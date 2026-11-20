@@ -1,6 +1,7 @@
 # All firmware/FAP build outputs (dbt.py)
 build/
 changed/
+nfc/
 .cache/
 .idea/
 __pycache__/

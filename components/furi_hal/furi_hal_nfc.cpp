@@ -317,7 +317,7 @@ FuriHalNfcError furi_hal_nfc_iso14443a_poller_trx_short_frame(FuriHalNfcaShortFr
     ReturnCode err = nfc_hw->rfalISO14443ATransceiveShortFrame(
         frame == FuriHalNfcaShortFrameAllReq ? RFAL_14443A_SHORTFRAME_CMD_WUPA
                                              : RFAL_14443A_SHORTFRAME_CMD_REQA,
-        last_rx, sizeof(last_rx), &len, 0);
+        last_rx, (uint8_t)(sizeof(last_rx) - 1), &len, 0);
     last_rx_bytes = len;
     if(err == ST_ERR_NONE) post_events(FuriHalNfcEventTxEnd | FuriHalNfcEventRxStart |
                                        (len ? FuriHalNfcEventRxEnd : FuriHalNfcEventTimerFwtExpired));
@@ -379,7 +379,7 @@ FuriHalNfcError furi_hal_nfc_iso14443a_rx_sdd_frame(uint8_t*, size_t, size_t*) {
 FuriHalNfcError furi_hal_nfc_iso15693_listener_tx_sof(void) {
     if(!nfc_hw) return FuriHalNfcErrorCommunication;
     uint16_t len = 0;
-    ReturnCode err = nfc_hw->rfalISO15693TransceiveEOF(last_rx, sizeof(last_rx), &len);
+    ReturnCode err = nfc_hw->rfalISO15693TransceiveEOF(last_rx, (uint8_t)(sizeof(last_rx) - 1), &len);
     last_rx_bytes = len;
     return hal_err(err);
 }

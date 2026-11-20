@@ -1,6 +1,7 @@
 #include "furi_hal_usb.h"
 #include "furi_hal_usb_hid.h"
 #include "furi_hal_usb_hid_backend.h"
+#include "furi_hal_usb_hid_u2f.h"
 
 #include <furi.h>
 #include <string.h>
@@ -14,15 +15,28 @@
 #define REPORT_ID_KEYBOARD 1
 #define REPORT_ID_MOUSE    2
 #define REPORT_ID_CONSUMER 3
+#define REPORT_ID_U2F      4
 
 #define HID_EP_IN       0x81
-#define HID_EP_BUF_SIZE 16
+#define HID_EP_BUF_SIZE HID_U2F_PACKET_LEN
 #define HID_POLL_MS     5
 
 static const uint8_t hid_report_descriptor[] = {
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(REPORT_ID_KEYBOARD)),
     TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(REPORT_ID_MOUSE)),
     TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER)),
+    /* U2F CTAP: 64-byte vendor IN/OUT report */
+    0x06, 0x00, 0xFF, /* Usage Page (Vendor Defined 0xFF00) */
+    0x09, 0x01,       /* Usage (0x01) */
+    0xA1, 0x01,       /* Collection (Application) */
+    0x85, REPORT_ID_U2F, /*   Report ID (4) */
+    0x75, 0x08,       /*   Report Size (8) */
+    0x95, HID_U2F_PACKET_LEN, /*   Report Count (64) */
+    0x09, 0x01,       /*   Usage (0x01) */
+    0x81, 0x02,       /*   Input (Data,Var,Abs) */
+    0x09, 0x01,       /*   Usage (0x01) */
+    0x91, 0x02,       /*   Output (Data,Var,Abs) */
+    0xC0,             /* End Collection */
 };
 
 #define HID_CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
@@ -76,6 +90,12 @@ static FuriMutex* s_state_mutex = NULL;
 static HidStateCallback s_user_cb = NULL;
 static void* s_user_ctx = NULL;
 
+/* U2F HID transport */
+static uint8_t s_u2f_request[HID_U2F_PACKET_LEN];
+static volatile uint16_t s_u2f_request_len = 0;
+static HidU2fCallback s_u2f_cb = NULL;
+static void* s_u2f_ctx = NULL;
+
 static void hid_state_lock(void) {
     if(s_state_mutex) furi_mutex_acquire(s_state_mutex, FuriWaitForever);
 }
@@ -101,12 +121,15 @@ void tud_mount_cb(void) {
     hid_state_lock();
     hid_publish_mount(true);
     hid_state_unlock();
+    if(s_u2f_cb) s_u2f_cb(HidU2fConnected, s_u2f_ctx);
 }
 
 void tud_umount_cb(void) {
     hid_state_lock();
     hid_publish_mount(false);
     hid_state_unlock();
+    s_u2f_request_len = 0;
+    if(s_u2f_cb) s_u2f_cb(HidU2fDisconnected, s_u2f_ctx);
 }
 
 void tud_suspend_cb(bool remote_wakeup_en) {
@@ -160,6 +183,36 @@ void tud_hid_set_report_cb(
        bufsize >= 1) {
         s_state.led_state = buffer[0];
     }
+
+    if(report_type == HID_REPORT_TYPE_OUTPUT && report_id == REPORT_ID_U2F && bufsize >= 1) {
+        uint16_t len = bufsize > HID_U2F_PACKET_LEN ? HID_U2F_PACKET_LEN : bufsize;
+        memcpy(s_u2f_request, buffer, len);
+        s_u2f_request_len = len;
+        if(s_u2f_cb) s_u2f_cb(HidU2fRequest, s_u2f_ctx);
+    }
+}
+
+void furi_hal_hid_u2f_set_callback(HidU2fCallback callback, void* context) {
+    s_u2f_cb = callback;
+    s_u2f_ctx = context;
+}
+
+uint32_t furi_hal_hid_u2f_get_request(uint8_t* buffer) {
+    if(!buffer || s_u2f_request_len == 0) return 0;
+    uint16_t len = s_u2f_request_len;
+    memcpy(buffer, s_u2f_request, len);
+    s_u2f_request_len = 0;
+    return len;
+}
+
+void furi_hal_hid_u2f_send_response(const uint8_t* buffer, uint16_t len) {
+    if(!buffer || !len) return;
+    uint32_t start = furi_get_tick();
+    while(s_state.mounted && !tud_hid_ready()) {
+        if(furi_get_tick() - start > 100) return;
+        furi_delay_tick(1);
+    }
+    if(s_state.mounted) tud_hid_report(REPORT_ID_U2F, buffer, len);
 }
 
 /* Backend start/stop - called from furi_hal_usb.c */

@@ -33,7 +33,7 @@
 
 /* Endpoint layout */
 #define HID_EP_IN       0x81
-#define HID_EP_BUF_SIZE 16
+#define HID_EP_BUF_SIZE 64 /* U2F CTAP report */
 #define HID_POLL_MS     5
 
 #define CDC_EP_NOTIF      0x82

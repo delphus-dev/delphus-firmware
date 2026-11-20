@@ -29,6 +29,7 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, NoReturn, Optional
 
@@ -794,6 +795,66 @@ class DBT:
         ok(f"FAP built: {output} ({output.stat().st_size} bytes)")
         return output
 
+    def resources(self) -> None:
+        """Assemble the SD-card file tree (and a zip) from app resources."""
+        out = BUILD_ROOT / "sd_card"
+        if out.exists():
+            shutil.rmtree(out)
+
+        # Each applications/main/<app>/resources/ folder already mirrors the
+        # SD-card layout (subghz/assets, infrared/assets, badusb/...).
+        sources = sorted((ROOT / "applications" / "main").glob("*/resources"))
+        for src in sources:
+            if not src.is_dir():
+                continue
+            for path in src.rglob("*"):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(src)
+                dst = out / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dst)
+
+        # JS example scripts go to /ext/apps/Scripts on the card.
+        js_src = ROOT / "applications" / "system" / "js_app" / "examples" / "apps" / "Scripts"
+        if js_src.is_dir():
+            for path in js_src.rglob("*"):
+                if not path.is_file():
+                    continue
+                dst = out / "apps" / "Scripts" / path.relative_to(js_src)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dst)
+
+        # The desktop only checks for the presence of this file.
+        manifest = out / "Manifest"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("Delphus firmware SD-card resources\n", encoding="utf-8")
+
+        files = [p for p in out.rglob("*") if p.is_file()]
+        size = sum(p.stat().st_size for p in files)
+        ok(f"SD-card tree: {out} ({len(files)} files, {size / 1024 / 1024:.2f} MB)")
+
+        archive = BUILD_ROOT / "sd_card.zip"
+        if archive.exists():
+            archive.unlink()
+        BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in files:
+                zf.write(path, path.relative_to(out).as_posix())
+        ok(f"SD-card archive: {archive} ({archive.stat().st_size / 1024 / 1024:.2f} MB)")
+
+    def clean(self) -> None:
+        """Remove all build outputs (firmware images and FAP plugins)."""
+        if not BUILD_ROOT.exists():
+            info("Nothing to clean: build/ does not exist")
+            return
+        size = sum(
+            p.stat().st_size for p in BUILD_ROOT.rglob("*") if p.is_file()
+        )
+        info(f"Removing {BUILD_ROOT} ({size / 1024 / 1024:.1f} MB)")
+        shutil.rmtree(BUILD_ROOT, ignore_errors=True)
+        ok("Build directory cleaned")
+
     def build_all_faps(self) -> None:
         if not USER_APPS.is_dir():
             fail(f"{USER_APPS} not found")
@@ -828,6 +889,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  python dbt.py debug delphus    build + flash + monitor\n"
             "  python dbt.py fap protopirate  build applications_user/protopirate\n"
             "  python dbt.py faps             build all applications_user apps\n"
+            "  python dbt.py clean            remove all built firmware/FAPs from build/\n"
+            "  python dbt.py resources        build the SD-card tree and build/sd_card.zip\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -841,6 +904,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--port", default=argparse.SUPPRESS)
         sp.add_argument("--yes", action="store_true", default=argparse.SUPPRESS)
     sub.add_parser("faps").add_argument("--yes", action="store_true", default=argparse.SUPPRESS)
+    sub.add_parser("clean")
+    sub.add_parser("resources")
     sp = sub.add_parser("fap")
     sp.add_argument("name", help="directory name under applications_user/ or a path")
     sp.add_argument("--yes", action="store_true", default=argparse.SUPPRESS)
@@ -857,6 +922,14 @@ def main() -> int:
     if args.command is None:
         tool.ensure_setup()
         ok("Setup complete. Run `python dbt.py build` to build the firmware.")
+        return 0
+
+    if args.command == "clean":
+        tool.clean()
+        return 0
+
+    if args.command == "resources":
+        tool.resources()
         return 0
 
     tool.ensure_setup()

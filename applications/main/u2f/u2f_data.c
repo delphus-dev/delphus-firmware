@@ -7,6 +7,11 @@
 
 #define TAG "U2f"
 
+/* STM32 CMSIS __REV() equivalent (byte-reverse a 32-bit word). */
+#ifndef __REV
+#define __REV(x) __builtin_bswap32((uint32_t)(x))
+#endif
+
 #define U2F_DATA_FOLDER   EXT_PATH("u2f/")
 #define U2F_CERT_FILE     U2F_DATA_FOLDER "assets/cert.der"
 #define U2F_CERT_KEY_FILE U2F_DATA_FOLDER "assets/cert_key.u2f"

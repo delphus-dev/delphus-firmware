@@ -815,6 +815,17 @@ class DBT:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, dst)
 
+        # Prebuilt resources (e.g. the fixed-key KeeLoq keystore) override
+        # anything copied from application resources above.
+        sd_src = ROOT / "sd_resources"
+        if sd_src.is_dir():
+            for path in sd_src.rglob("*"):
+                if not path.is_file():
+                    continue
+                dst = out / path.relative_to(sd_src)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dst)
+
         # JS example scripts go to /ext/apps/Scripts on the card.
         js_src = ROOT / "applications" / "system" / "js_app" / "examples" / "apps" / "Scripts"
         if js_src.is_dir():

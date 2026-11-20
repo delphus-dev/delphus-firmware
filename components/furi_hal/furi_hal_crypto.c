@@ -31,6 +31,16 @@
 #define CRYPTO_KEY_SIZE      32u
 #define CRYPTO_IV_SIZE       16u
 
+/* Fixed AES-256 key for SubGHz Keeloq manufacturer keystore (slot 1).
+ * It is shared across all boards so the pre-encrypted asset works everywhere.
+ * Derived with SHA256("delphus-keeloq-fixed-key-v1"). */
+static const uint8_t keeloq_fixed_key[CRYPTO_KEY_SIZE] = {
+    0xE5, 0xFC, 0xE6, 0xCE, 0x98, 0xDA, 0xB9, 0x76,
+    0x18, 0xF6, 0xBD, 0xE2, 0x5B, 0x64, 0x54, 0x5D,
+    0x45, 0xAE, 0x93, 0x45, 0x46, 0x46, 0x1D, 0x91,
+    0x13, 0x4B, 0x45, 0x02, 0x5F, 0x39, 0x96, 0x0D,
+};
+
 static mbedtls_aes_context aes_enc;
 static mbedtls_aes_context aes_dec;
 static uint8_t current_iv[CRYPTO_IV_SIZE];
@@ -86,8 +96,14 @@ static bool crypto_get_key(uint8_t slot, uint8_t* key, size_t* key_len) {
         *key_len = want;
         return true;
     }
-    /* Slots 1 (SubGHz keystore) and 11 (U2F) are provisioned by derivation. */
-    if(slot == 1 || slot == FURI_HAL_CRYPTO_ENCLAVE_UNIQUE_KEY_SLOT) {
+    if(slot == 1) {
+        /* KeeLoq manufacturer codes: fixed key, pre-encrypted SD asset. */
+        memcpy(key, keeloq_fixed_key, CRYPTO_KEY_SIZE);
+        *key_len = CRYPTO_KEY_SIZE;
+        return true;
+    }
+    if(slot == FURI_HAL_CRYPTO_ENCLAVE_UNIQUE_KEY_SLOT) {
+        /* U2F keys stay device-specific (derived from eFuse MAC). */
         crypto_derive_key(slot, key);
         *key_len = CRYPTO_KEY_SIZE;
         return true;

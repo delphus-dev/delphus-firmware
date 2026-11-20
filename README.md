@@ -39,7 +39,7 @@ External CC1101 receiver/transmitter for 433–868 MHz signals.
 - Transmit saved files; manual signal creation (frequency, modulation, protocol, key/serial/counter)
 - Brute force / sub-brute attack with manufacturer dictionary
 - Playlist for sequential transmit
-- **Limitation:** AES-encrypted manufacturer keystores (`keeloq_mfcodes`, `nice_flor_s`, `alutech_at_4n`) are not decryptable on this port — only the plain-text `keeloq_mfcodes_user` works for Keeloq decoding.
+- **KeeLoq manufacturer codes:** the bundled `keeloq_mfcodes` is a Delphus-generated AES-256-CBC keystore (fixed slot-1 key), produced by `dbt.py resources` from `sd_resources/` — manufacturer decoding works. Only the plain-text `keeloq_mfcodes_user` remains user-supplied.
 
 #### Sub-GHz Remote
 Multi-button remote layouts that batch saved `.sub` files. Map Up/Down/Left/Right/OK to individual transmit signals; switch between persistent remote profiles.

@@ -142,7 +142,7 @@
 #define BOARD_HAS_BLE           1
 #define BOARD_HAS_RGB_LED       1
 #define BOARD_HAS_VIBRO         1
-#define BOARD_HAS_SPEAKER       0
+#define BOARD_HAS_SPEAKER       1
 #define BOARD_HAS_IR            1
 #define BOARD_HAS_IBUTTON       1
 #define BOARD_HAS_NFC           0   /* ST25R3916 HAL is a separate task */

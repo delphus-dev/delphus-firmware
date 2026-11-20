@@ -79,7 +79,7 @@ static void derive_name_from_mac(const uint8_t mac[6], char* out, size_t out_siz
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     unsigned char digest[64];
-    if(mbedtls_sha512_ret((const unsigned char*)serial, strlen(serial), digest, 0) != 0) {
+    if(mbedtls_sha512((const unsigned char*)serial, strlen(serial), digest, 0) != 0) {
         snprintf(out, out_size, "Flipper");
         return;
     }

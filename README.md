@@ -175,8 +175,8 @@ Use `--port COM3` (or `/dev/ttyUSB0`) to override the detected port, and
 `--yes` to skip install prompts. Set `IDF_PATH` / `IDF_TOOLS_PATH` to use an
 existing ESP-IDF installation instead of downloading one.
 
-Outputs: `build/<board>/` (firmware binaries, `firmware.bin` merged image) and
-`build/fap/` (`.fap` plugins).
+Outputs: `build/<board>/` (firmware binaries, `<board>_firmware.bin` merged
+image, e.g. `build/delphus/delphus_firmware.bin`) and `build/fap/` (`.fap` plugins).
 
 ## Porting Approach
 

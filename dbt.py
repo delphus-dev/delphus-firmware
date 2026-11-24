@@ -536,7 +536,8 @@ class DBT:
             self._idf(["set-target", cfg["target"]], build_dir, options=common)
         self._idf(["reconfigure", "build"], build_dir, options=common)
 
-        merged = build_dir / "firmware.bin"
+        # Name the merged image after the board so builds are self-describing.
+        merged = build_dir / f"{name}_firmware.bin"
         try:
             self._idf(["merge-bin", "-o", str(merged)], build_dir)
             ok(f"Firmware image: {merged}")

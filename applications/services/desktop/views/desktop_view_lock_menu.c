@@ -5,14 +5,12 @@
 #include "../desktop_i.h"
 #include "desktop_view_lock_menu.h"
 
-#define LOCK_MENU_MAX_ITEMS 6
+#define LOCK_MENU_MAX_ITEMS 4
 
 // Menu items and events are built dynamically from the current toggle states:
 //   qFlipper       Enable/Disable (background RPC bridge)   [USB-OTG only]
 //   USB-Storage    open the full-screen mass-storage scene  [USB-OTG only]
 //   Bluetooth      Enable/Disable
-//   Mesh: Off/Master/Client    cycle the mesh role
-//   Mesh Clients   open the discovery/pairing scene          [Master only]
 
 typedef struct {
     const char* label;
@@ -47,10 +45,6 @@ static void lock_menu_build_items(bool usb_available, bool qflipper_on, bool bt_
 
     s_items[s_item_count++] = (LockMenuItem){
         bt_on ? "Disable Bluetooth" : "Enable Bluetooth", DesktopLockMenuEventBluetoothToggle};
-
-    /* Mesh: der T-Embed ist immer Master — kein Mode-Toggle, "Mesh Clients"
-     * (Discovery/Pair) ist immer verfügbar. */
-    s_items[s_item_count++] = (LockMenuItem){"Mesh Clients", DesktopLockMenuEventMeshClients};
 }
 
 void desktop_lock_menu_set_callback(
@@ -76,9 +70,8 @@ void desktop_lock_menu_set_states(
     bool bt_on) {
     lock_menu_build_items(usb_available, qflipper_on, bt_on);
     /* Index nicht resetten — Caller (refresh nach Toggle) erwartet, dass die
-     * Selektion stehen bleibt; bei out-of-range clampen wir, damit der Wechsel
-     * vom Master- in den Off-Modus (verliert "Mesh Clients") nicht ins Leere
-     * zeigt. */
+     * Selektion stehen bleibt; bei out-of-range clampen wir, damit ein Wechsel
+     * der verfügbaren Items nicht ins Leere zeigt. */
     with_view_model(
         lock_menu->view,
         DesktopLockMenuViewModel * model,

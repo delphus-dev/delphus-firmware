@@ -1,6 +1,7 @@
 #include "furi_hal_power.h"
 #include "furi_hal_bq27220.h"
 #include "furi_hal_bq25896.h"
+#include "furi_hal_ina219.h"
 #include "furi_hal_display.h"
 #include "boards/board.h"
 
@@ -214,6 +215,26 @@ static bool furi_hal_power_is_usb_present(void) {
 
 static void furi_hal_power_refresh_sample(void) {
     furi_hal_power_ensure_initialized();
+
+    /* INA219 (TP4056 boards without a fuel gauge) is the primary source when it
+     * answered on the bus. Charge percentage is still derived from the bus
+     * voltage by furi_hal_power_get_pct(). */
+    if(furi_hal_ina219_is_present()) {
+        const uint16_t battery_mv = furi_hal_ina219_get_voltage_mv();
+        if(battery_mv == 0) {
+            furi_hal_power.last_sample_ok = false;
+            return;
+        }
+        float voltage = (float)battery_mv / 1000.0f;
+        if(voltage > 6.0f) voltage = 6.0f;
+        furi_hal_power.last_supply_voltage = voltage;
+        furi_hal_power.last_battery_voltage = voltage;
+        furi_hal_power.has_battery_reading = true;
+        furi_hal_power.last_sample_us = esp_timer_get_time();
+        furi_hal_power.last_sample_ok = true;
+        return;
+    }
+
     if(!furi_hal_power.adc_ready) {
         furi_hal_power.last_sample_ok = false;
         return;
@@ -281,13 +302,22 @@ static float furi_hal_power_get_estimated_battery_voltage(void) {
 void furi_hal_power_init(void) {
     furi_hal_power_ensure_initialized();
 
-    /* Initialize shared I2C bus for power ICs (BQ27220 + BQ25896) */
+    /* Initialize shared I2C bus for power ICs (BQ27220 + BQ25896 + INA219).
+     * Delphus names its pins BOARD_PIN_I2C_*, upstream boards use QWIIC. */
 #if defined(BOARD_PIN_QWIIC_SDA) && defined(BOARD_PIN_QWIIC_SCL)
+#define FURI_HAL_POWER_I2C_SDA BOARD_PIN_QWIIC_SDA
+#define FURI_HAL_POWER_I2C_SCL BOARD_PIN_QWIIC_SCL
+#elif defined(BOARD_PIN_I2C_SDA) && defined(BOARD_PIN_I2C_SCL)
+#define FURI_HAL_POWER_I2C_SDA BOARD_PIN_I2C_SDA
+#define FURI_HAL_POWER_I2C_SCL BOARD_PIN_I2C_SCL
+#endif
+
+#if defined(FURI_HAL_POWER_I2C_SDA)
     {
         i2c_config_t conf = {
             .mode = I2C_MODE_MASTER,
-            .sda_io_num = BOARD_PIN_QWIIC_SDA,
-            .scl_io_num = BOARD_PIN_QWIIC_SCL,
+            .sda_io_num = FURI_HAL_POWER_I2C_SDA,
+            .scl_io_num = FURI_HAL_POWER_I2C_SCL,
             .sda_pullup_en = GPIO_PULLUP_ENABLE,
             .scl_pullup_en = GPIO_PULLUP_ENABLE,
             .master.clk_speed = 100000,
@@ -303,9 +333,10 @@ void furi_hal_power_init(void) {
     /* Allow power ICs to stabilize after PWR_EN and I2C bus init */
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    /* BQ27220 first (needs clean I2C bus), then BQ25896 */
+    /* BQ27220 first (needs clean I2C bus), then BQ25896, then INA219 */
     furi_hal_bq27220_init();
     furi_hal_bq25896_init();
+    furi_hal_ina219_init();
     furi_hal_power_refresh_sample();
     if(furi_hal_bq27220_is_present()) {
         ESP_LOGI(TAG, "Fuel gauge: BQ27220 (%umV, %u%%)",
@@ -315,10 +346,15 @@ void furi_hal_power_init(void) {
         ESP_LOGI(TAG, "Charger: BQ25896 (VBUS=%umV, VREG=%umV)",
             furi_hal_bq25896_get_vbus_voltage_mv(), furi_hal_bq25896_get_vreg_voltage_mv());
     }
+    if(furi_hal_ina219_is_present()) {
+        ESP_LOGI(TAG, "Fuel gauge: INA219 (%umV, %dmA)",
+            furi_hal_ina219_get_voltage_mv(), (int)furi_hal_ina219_get_current_ma());
+    }
 }
 
 bool furi_hal_power_gauge_is_ok(void) {
     if(furi_hal_bq27220_is_present()) return true;
+    if(furi_hal_ina219_is_present()) return true;
     if(!furi_hal_power.adc_handle) return true;
     furi_hal_power_refresh_sample();
     return furi_hal_power.last_sample_ok;
@@ -362,6 +398,11 @@ uint8_t furi_hal_power_get_pct(void) {
     if(furi_hal_bq27220_is_present()) {
         return furi_hal_bq27220_get_charge_pct();
     }
+    /* INA219 has no coulomb counter; derive percentage from bus voltage. */
+    if(furi_hal_ina219_is_present()) {
+        const uint16_t mv = furi_hal_ina219_get_voltage_mv();
+        return mv ? furi_hal_power_voltage_to_pct((float)mv / 1000.0f) : 0;
+    }
     if(!furi_hal_power.adc_handle) {
         return 100; /* No ADC, no fuel gauge → USB powered */
     }
@@ -387,6 +428,12 @@ bool furi_hal_power_is_charging(void) {
     }
     if(furi_hal_bq27220_is_present()) {
         return furi_hal_bq27220_is_charging();
+    }
+    /* No charger IC on TP4056 boards: current flowing into the pack means the
+     * charger is active. As on the upstream board, the shunt is wired with the
+     * opposite polarity, so charging current reads negative. */
+    if(furi_hal_ina219_is_present()) {
+        return furi_hal_ina219_get_current_ma() < -20;
     }
     furi_hal_power_refresh_sample();
     return furi_hal_power_is_usb_present() && (furi_hal_power.suppress_charge == 0);
@@ -533,6 +580,11 @@ float furi_hal_power_get_battery_current(FuriHalPowerIC ic) {
     }
     if(furi_hal_bq27220_is_present()) {
         return (float)furi_hal_bq27220_get_current_ma() / 1000.0f;
+    }
+    /* INA219 shunt polarity is opposite to the BQ27220 convention: flip the
+     * sign so "positive = charging" holds for the UI/state machine. */
+    if(furi_hal_ina219_is_present()) {
+        return (float)(-furi_hal_ina219_get_current_ma()) / 1000.0f;
     }
     return 0.0f;
 }

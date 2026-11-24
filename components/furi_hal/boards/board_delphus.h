@@ -151,4 +151,11 @@
 
 #define BQ27220_ADDR                    0x55
 #define BQ25896_CHARGE_LIMIT            1280
+
+/* INA219 current/voltage monitor (optional, on the shared I2C bus).
+ * Present on TP4056-style boards that have no BQ27220 fuel gauge. */
+#define BOARD_INA219_ADDR               0x40
+#define BOARD_INA219_SHUNT_MOHM         100
+#define BOARD_INA219_MAX_CURRENT_MA     3200
+
 #define FURI_HAL_POWER_VIRTUAL_CAPACITY_MAH (1000U)

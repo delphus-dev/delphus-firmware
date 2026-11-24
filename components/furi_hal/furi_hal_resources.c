@@ -45,5 +45,12 @@ const GpioPin gpio_nrf24_cs = {.port = NULL, .pin = BOARD_PIN_NRF24_CSN};
 #else
 const GpioPin gpio_nrf24_cs = {.port = NULL, .pin = UINT16_MAX};
 #endif
+
+#ifdef BOARD_PIN_NFC_CS
+const GpioPin gpio_nfc_cs = {.port = NULL, .pin = BOARD_PIN_NFC_CS};
+#endif
+#ifdef BOARD_PIN_NFC_IRQ
+const GpioPin gpio_nfc_irq = {.port = NULL, .pin = BOARD_PIN_NFC_IRQ};
+#endif
 const GpioPin gpio_ibutton  = {.port = NULL, .pin = UINT16_MAX};
 const GpioPin gpio_speaker  = {.port = NULL, .pin = UINT16_MAX};

@@ -29,7 +29,6 @@ set(FURI_HAL_SRCS
     "furi_hal_spi_bus.c"
     "furi_hal_spi.c"
     "furi_hal_subghz.c"
-    "furi_hal_nfc.cpp"
     "furi_hal_pin_arbiter.c"
     "furi_hal_random.c"
     "furi_hal_sd.c"
@@ -58,9 +57,21 @@ else()
     list(APPEND FURI_HAL_SRCS "furi_hal_usb_hid_stub.c")
 endif()
 
-# ST25R3916 + ST RFAL (Arduino-flavoured C++ sources with our compat layer).
-file(GLOB RFAL_SRCS "nfc_rfal/*.cpp" "nfc_rfal/*.c")
-list(APPEND FURI_HAL_SRCS ${RFAL_SRCS} "nfc_compat/nfc_platform.cpp")
+# ST25R3916 NFC front-end (ported from the Flipper F7 HAL / upstream
+# Sor3nt Flipper-Zero-ESP32-Port). Plain register driver with boot-time
+# oscillator wake and retries; shares SPI with the LCD/SD/CC1101.
+list(APPEND FURI_HAL_SRCS
+    "furi_hal_nfc_st25r3916.c"
+    "furi_hal_nfc_event.c"
+    "furi_hal_nfc_irq.c"
+    "furi_hal_nfc_timer.c"
+    "furi_hal_nfc_felica.c"
+    "furi_hal_nfc_iso14443a.c"
+    "furi_hal_nfc_iso14443b.c"
+    "furi_hal_nfc_iso15693.c"
+    "st25r3916.c"
+    "st25r3916_reg.c"
+)
 
 idf_component_register(
     SRCS ${FURI_HAL_SRCS}

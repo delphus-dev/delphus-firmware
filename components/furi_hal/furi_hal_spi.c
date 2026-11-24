@@ -7,11 +7,12 @@
 #include <esp_log.h>
 #include <esp_rom_sys.h>
 
+#include "boards/board.h"
+
 #include <furi.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_power.h>
 #include <furi_hal_resources.h>
-#include "boards/board.h"
 
 #ifndef BOARD_CC1101_SPI_SHARED
 #define BOARD_CC1101_SPI_SHARED 0
@@ -87,6 +88,27 @@ FuriHalSpiBusHandle furi_hal_spi_bus_handle_nrf24 = {
     .frequency_hz = 4 * 1000 * 1000,
     .mode = 0,
 };
+
+#ifdef BOARD_PIN_NFC_CS
+/* ST25R3916 NFC front-end: CS-muxed onto the shared SPI bus. Pins come from
+ * the board config (Delphus: MOSI=9 MISO=10 SCK=11 CS=47). SPI mode 1,
+ * 4 MHz — conservative for a bus shared with the LCD and SD card. */
+static const GpioPin gpio_nfc_mosi = {.port = NULL, .pin = BOARD_PIN_NFC_MOSI};
+static const GpioPin gpio_nfc_miso = {.port = NULL, .pin = BOARD_PIN_NFC_MISO};
+static const GpioPin gpio_nfc_sck = {.port = NULL, .pin = BOARD_PIN_NFC_SCK};
+
+FuriHalSpiBusHandle furi_hal_spi_bus_handle_nfc = {
+    .bus = &furi_hal_spi_bus_subghz,
+    .miso = &gpio_nfc_miso,
+    .mosi = &gpio_nfc_mosi,
+    .sck = &gpio_nfc_sck,
+    .cs = &gpio_nfc_cs,
+    .device = NULL,
+    .initialized = false,
+    .frequency_hz = 4 * 1000 * 1000,
+    .mode = 1,
+};
+#endif
 
 static bool furi_hal_spi_pin_valid(const GpioPin* pin) {
     return pin && pin->pin != FURI_HAL_SPI_PIN_UNMAPPED;

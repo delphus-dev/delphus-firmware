@@ -65,6 +65,10 @@ extern const GpioPin gpio_ext_pa7; /* MOSI    - GPIO9 */
 extern const GpioPin gpio_cc1101_cs;  /* CC1101 CSN - GPIO12 */
 extern const GpioPin gpio_cc1101_g0;  /* CC1101 GDO0 - GPIO3 */
 extern const GpioPin gpio_nrf24_cs; /* NRF24 CSN -- T-Embed: GPIO44 */
+
+/* NFC (ST25R3916) pins — the only supported board (delphus) always has them. */
+extern const GpioPin gpio_nfc_cs; /* NFC chip select */
+extern const GpioPin gpio_nfc_irq; /* NFC interrupt line */
 extern const GpioPin gpio_ibutton;
 extern const GpioPin gpio_speaker;
 

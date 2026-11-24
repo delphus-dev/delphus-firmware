@@ -77,7 +77,7 @@
 #define BOARD_PIN_CC1101_SW0    UINT16_MAX
 #define BOARD_CC1101_SPI_SHARED 1
 
-/* ---- NFC: ST25R3916 on SPI2 (pinout only; HAL port is pending) ---- */
+/* ---- NFC: ST25R3916 on SPI2 (shared with LCD/SD/CC1101) ---- */
 #define BOARD_PIN_NFC_MOSI      9
 #define BOARD_PIN_NFC_MISO      10
 #define BOARD_PIN_NFC_SCK       11

@@ -8,8 +8,7 @@ static void power_test_deinit(void) {
 }
 
 MU_TEST(test_power_charge_voltage_limit_exact) {
-    // Power of 16mV charge voltage limits get applied exactly
-    // (bq25896 charge controller works in 16mV increments)
+    // Charge voltage limits are quantized in 16mV increments
     //
     // This test may need adapted if other charge controllers are used in the future.
     for(uint16_t charge_mv = 3840; charge_mv <= 4208; charge_mv += 16) {

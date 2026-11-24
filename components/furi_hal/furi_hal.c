@@ -13,7 +13,7 @@ void furi_hal_init_early(void) {
     furi_hal_cortex_init_early();
 
 #if defined(BOARD_PIN_PWR_EN) && (BOARD_PIN_PWR_EN != UINT16_MAX)
-    /* Power-enable must be set early — powers CC1101, BQ27220 fuel gauge, WS2812 */
+    /* Power-enable must be set early - powers CC1101, WS2812, I2C power monitor */
     static const GpioPin pwr_en = {.port = NULL, .pin = BOARD_PIN_PWR_EN};
     furi_hal_gpio_init_simple(&pwr_en, GpioModeOutputPushPull);
     furi_hal_gpio_write(&pwr_en, true);
